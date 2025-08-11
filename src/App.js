@@ -55,17 +55,28 @@ function App() {
   const [sortBy, setSortBy] = useState("votesInteresting"); // Current sort field
   const [sortOrder, setSortOrder] = useState("desc"); // Current sort order (asc/desc)
   const [searchQuery, setSearchQuery] = useState(""); // Search query for filtering facts
+  const [excludeDisputed, setExcludeDisputed] = useState(false); // Whether to exclude disputed facts
 
   // ============================================================================
   // UTILITY FUNCTIONS
   // ============================================================================
 
-  // Function to filter facts based on search query
+  // Function to filter facts based on search query and disputed status
   const getFilteredFacts = (factsToFilter) => {
     if (!factsToFilter || factsToFilter.length === 0) return factsToFilter;
+
+    let filtered = factsToFilter;
+
+    // Filter out disputed facts if excludeDisputed is true
+    if (excludeDisputed) {
+      filtered = filtered.filter((f) => !(f.votesFalse > f.votesInteresting));
+    }
+
+    // Apply search filter
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return factsToFilter;
-    return factsToFilter.filter((f) => {
+    if (!q) return filtered;
+
+    return filtered.filter((f) => {
       const text = (f.text || "").toLowerCase();
       const source = (f.source || "").toLowerCase();
       const category = (f.category || "").toLowerCase();
@@ -169,6 +180,8 @@ function App() {
             }}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
+            excludeDisputed={excludeDisputed}
+            onExcludeDisputedChange={setExcludeDisputed}
           />
         )}
       </main>
@@ -343,6 +356,8 @@ function FactSorter({
   onSortChange,
   searchQuery,
   onSearchChange,
+  excludeDisputed,
+  onExcludeDisputedChange,
 }) {
   const sortOptions = [
     { value: "votesInteresting", label: "👍 Interesting" },
@@ -380,6 +395,15 @@ function FactSorter({
           </button>
         ))}
       </div>
+      <button
+        className={`sort-btn exclude-disputed ${
+          excludeDisputed ? "active" : ""
+        }`}
+        onClick={() => onExcludeDisputedChange(!excludeDisputed)}
+        title="Hide facts marked as disputed"
+      >
+        {excludeDisputed ? "✅" : "❌"} Disputed
+      </button>
       <input
         className="sort-search"
         type="search"
@@ -401,6 +425,8 @@ function FactsList({
   onSortChange,
   searchQuery,
   onSearchChange,
+  excludeDisputed,
+  onExcludeDisputedChange,
 }) {
   if (facts.length === 0) {
     return (
@@ -418,6 +444,8 @@ function FactsList({
         onSortChange={onSortChange}
         searchQuery={searchQuery}
         onSearchChange={onSearchChange}
+        excludeDisputed={excludeDisputed}
+        onExcludeDisputedChange={onExcludeDisputedChange}
       />
 
       <ul className="fact-list">
