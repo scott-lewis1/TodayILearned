@@ -54,10 +54,24 @@ function App() {
   const [currentCategory, setCurrentCategory] = useState("All"); // Current selected category filter
   const [sortBy, setSortBy] = useState("votesInteresting"); // Current sort field
   const [sortOrder, setSortOrder] = useState("desc"); // Current sort order (asc/desc)
+  const [searchQuery, setSearchQuery] = useState(""); // Search query for filtering facts
 
   // ============================================================================
   // UTILITY FUNCTIONS
   // ============================================================================
+
+  // Function to filter facts based on search query
+  const getFilteredFacts = (factsToFilter) => {
+    if (!factsToFilter || factsToFilter.length === 0) return factsToFilter;
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return factsToFilter;
+    return factsToFilter.filter((f) => {
+      const text = (f.text || "").toLowerCase();
+      const source = (f.source || "").toLowerCase();
+      const category = (f.category || "").toLowerCase();
+      return text.includes(q) || source.includes(q) || category.includes(q);
+    });
+  };
 
   // Function to sort facts based on current sort settings
   const getSortedFacts = (factsToSort) => {
@@ -114,6 +128,9 @@ function App() {
     [currentCategory] // Dependency array - effect runs when currentCategory changes
   );
 
+  // Precompute displayed facts (filter, then sort)
+  const displayedFacts = getSortedFacts(getFilteredFacts(facts));
+
   // ============================================================================
   // RENDER
   // ============================================================================
@@ -142,7 +159,7 @@ function App() {
           <Loader />
         ) : (
           <FactsList
-            facts={getSortedFacts(facts)}
+            facts={displayedFacts}
             setFacts={setFacts}
             sortBy={sortBy}
             sortOrder={sortOrder}
@@ -150,6 +167,8 @@ function App() {
               setSortBy(field);
               setSortOrder(order);
             }}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
           />
         )}
       </main>
@@ -318,7 +337,13 @@ function CategoryFilters({ currentCategory, setCurrentCategory }) {
 }
 
 // Fact sorter component
-function FactSorter({ sortBy, sortOrder, onSortChange }) {
+function FactSorter({
+  sortBy,
+  sortOrder,
+  onSortChange,
+  searchQuery,
+  onSearchChange,
+}) {
   const sortOptions = [
     { value: "votesInteresting", label: "👍 Interesting" },
     { value: "votesMindblowing", label: "🤯 Mind-blowing" },
@@ -355,12 +380,28 @@ function FactSorter({ sortBy, sortOrder, onSortChange }) {
           </button>
         ))}
       </div>
+      <input
+        className="sort-search"
+        type="search"
+        placeholder="Search facts..."
+        value={searchQuery}
+        onChange={(e) => onSearchChange(e.target.value)}
+        aria-label="Search facts"
+      />
     </div>
   );
 }
 
 // Facts list component
-function FactsList({ facts, setFacts, sortBy, sortOrder, onSortChange }) {
+function FactsList({
+  facts,
+  setFacts,
+  sortBy,
+  sortOrder,
+  onSortChange,
+  searchQuery,
+  onSearchChange,
+}) {
   if (facts.length === 0) {
     return (
       <p className="message">
@@ -375,6 +416,8 @@ function FactsList({ facts, setFacts, sortBy, sortOrder, onSortChange }) {
         sortBy={sortBy}
         sortOrder={sortOrder}
         onSortChange={onSortChange}
+        searchQuery={searchQuery}
+        onSearchChange={onSearchChange}
       />
 
       <ul className="fact-list">
@@ -392,21 +435,68 @@ function FactsList({ facts, setFacts, sortBy, sortOrder, onSortChange }) {
 // Individual fact component
 function Fact({ fact, setFacts }) {
   const [isUpdating, setIsUpdating] = useState(false);
+  // Track which vote type was selected for each fact
+  const getVoteData = () => {
+    try {
+      return JSON.parse(sessionStorage.getItem("factVotes") || "{}");
+    } catch {
+      return {};
+    }
+  };
+  const [currentVote, setCurrentVote] = useState(
+    getVoteData()[fact.id] || null
+  );
   const isDisputed = fact.votesFalse > fact.votesInteresting;
+
   async function handleVote(voteType) {
     setIsUpdating(true);
+
+    let updateData = {};
+    const voteData = getVoteData();
+    const previousVote = voteData[fact.id];
+
+    if (previousVote && previousVote !== voteType) {
+      // User is changing their vote - decrease previous vote, increase new vote
+      updateData = {
+        [previousVote]: Math.max(0, (fact[previousVote] || 0) - 1),
+        [voteType]: (fact[voteType] || 0) + 1,
+      };
+    } else if (previousVote === voteType) {
+      // User is clicking the same vote type - remove their vote
+      updateData = {
+        [voteType]: Math.max(0, (fact[voteType] || 0) - 1),
+      };
+      voteType = null; // Clear the vote
+    } else {
+      // User is voting for the first time
+      updateData = {
+        [voteType]: (fact[voteType] || 0) + 1,
+      };
+    }
+
     const { data: updatedFact, error } = await supabase
       .from("Facts")
-      .update({ [voteType]: fact[voteType] + 1 })
+      .update(updateData)
       .eq("id", fact.id)
       .select();
 
     setIsUpdating(false);
 
-    if (!error)
+    if (!error && updatedFact && updatedFact.length > 0) {
       setFacts((facts) =>
         facts.map((f) => (f.id === fact.id ? updatedFact[0] : f))
       );
+
+      // Update session storage
+      const newVoteData = { ...voteData };
+      if (voteType) {
+        newVoteData[fact.id] = voteType;
+      } else {
+        delete newVoteData[fact.id];
+      }
+      sessionStorage.setItem("factVotes", JSON.stringify(newVoteData));
+      setCurrentVote(voteType);
+    }
   }
   return (
     <li className="fact">
@@ -439,10 +529,11 @@ function Fact({ fact, setFacts }) {
       </div>
 
       {/* Vote buttons */}
-      <div className="vote-buttons">
+      <div className={`vote-buttons${currentVote ? " voted" : ""}`}>
         <button
           onClick={() => handleVote("votesInteresting")}
           disabled={isUpdating}
+          className={currentVote === "votesInteresting" ? "active-vote" : ""}
         >
           👍{fact.votesInteresting}
         </button>{" "}
@@ -450,11 +541,16 @@ function Fact({ fact, setFacts }) {
         <button
           onClick={() => handleVote("votesMindblowing")}
           disabled={isUpdating}
+          className={currentVote === "votesMindblowing" ? "active-vote" : ""}
         >
           🤯{fact.votesMindblowing}
         </button>{" "}
         {/* Mind-blowing votes */}
-        <button onClick={() => handleVote("votesFalse")} disabled={isUpdating}>
+        <button
+          onClick={() => handleVote("votesFalse")}
+          disabled={isUpdating}
+          className={currentVote === "votesFalse" ? "active-vote" : ""}
+        >
           ⛔️{fact.votesFalse}
         </button>{" "}
         {/* False votes */}
