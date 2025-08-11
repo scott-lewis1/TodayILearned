@@ -320,10 +320,10 @@ function CategoryFilters({ currentCategory, setCurrentCategory }) {
 // Fact sorter component
 function FactSorter({ sortBy, sortOrder, onSortChange }) {
   const sortOptions = [
-    { value: "votesInteresting", label: "👍 Interesting Votes" },
-    { value: "votesMindblowing", label: "🤯 Mind-blowing Votes" },
-    { value: "votesFalse", label: "⛔️ False Votes" },
-    { value: "createdIn", label: "📅 Year Created" },
+    { value: "votesInteresting", label: "👍 Interesting" },
+    { value: "votesMindblowing", label: "🤯 Mind-blowing" },
+    { value: "votesFalse", label: "⛔️ False" },
+    { value: "createdIn", label: "📅 Year" },
   ];
 
   const handleSortChange = (field) => {
@@ -338,7 +338,7 @@ function FactSorter({ sortBy, sortOrder, onSortChange }) {
 
   return (
     <div className="fact-sorter">
-      <h3>Sort by:</h3>
+      <h3>Sort:</h3>
       <div className="sort-buttons">
         {sortOptions.map((option) => (
           <button
